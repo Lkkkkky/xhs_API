@@ -78,8 +78,9 @@ def monitor_task(email, keyword):
             logger.info(f'开始监控链接: {url}, 当前评论数量: {cnt}')
             
             data = xhs.monitor_comments(cookies_str, url, email, keyword, cnt)
-            
+            print(url)
             db_manager.update_note_comments_count(url, cnt)
+            print(url)
             # 保存监控数据
             db_manager.save_to_monitor_comments(data)
             

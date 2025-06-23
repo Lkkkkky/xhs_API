@@ -415,7 +415,7 @@ class DatabaseCookieManager:
                 sql = """
                         UPDATE xhs_notes 
                         SET comments = %s 
-                        WHERE note_url LIKE %s
+                        WHERE note_url = %s
                       """
                 cursor.execute(sql, (comment_count, note_url))
                 affected_rows = cursor.rowcount
