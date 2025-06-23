@@ -214,30 +214,47 @@ class DatabaseCookieManager:
             Args:
                 merged_data (list): merge_note_info_with_comments函数返回的合并数据
 
-                
             Returns:
                 bool: 保存是否成功
             """
             try:
                 connection = self.get_connection()
                 with connection.cursor() as cursor:
+                    # 准备检查comment_id是否存在的SQL语句
+                    check_sql = "SELECT COUNT(*) as count FROM monitor_comments WHERE comment_id = %s"
+                    
                     # 准备插入SQL语句
                     insert_sql = """
                     INSERT INTO monitor_comments (
-                        keyword, title, note_author, userInfo, content, 
-                        likes, collects, comments, note_url, collect_time, 
-                        note_time, note_location, note_type, comment_location, 
-                        comment_id, comment_author
+                        keyword, title, note_author, userInfo, comment_content, 
+                        note_likes, collects, comments, note_url, collect_time, 
+                        note_time, note_location, note_type,comment_location, 
+                        comment_id, comment_author,note_content,comment_like_count
                     ) VALUES (
-                        %(keyword)s, %(title)s, %(note_author)s, %(userInfo)s, %(content)s,
-                        %(likes)s, %(collects)s, %(comments)s, %(note_url)s, %(collect_time)s,
+                        %(keyword)s, %(title)s, %(note_author)s, %(userInfo)s, %(comment_content)s,
+                        %(note_likes)s, %(collects)s, %(comments)s, %(note_url)s, %(collect_time)s,
                         %(note_time)s, %(note_location)s, %(note_type)s, %(comment_location)s,
-                        %(comment_id)s, %(comment_author)s
+                        %(comment_id)s, %(comment_author)s, %(note_content)s, %(comment_like_count)s
                     )
                     """
                     
-                    # 批量插入数据
+                    new_comments_count = 0
+                    skipped_comments_count = 0
+                    
+                    # 逐条检查并插入数据
                     for item in merged_data:
+                        comment_id = item.get('comment_id', '')
+                        
+                        # 检查comment_id是否已存在
+                        cursor.execute(check_sql, (comment_id,))
+                        result = cursor.fetchone()
+                        
+                        if result['count'] > 0:
+                            # comment_id已存在，跳过
+                            skipped_comments_count += 1
+                            continue
+                        
+                        # comment_id不存在，进行插入
                         # 处理时间格式
                         collect_time = item.get('collect_time')
                         note_time = item.get('note_time')
@@ -261,8 +278,8 @@ class DatabaseCookieManager:
                             'title': item.get('title', ''),
                             'note_author': item.get('note_author', ''),
                             'userInfo': item.get('userInfo', ''),
-                            'content': item.get('content', ''),
-                            'likes': item.get('likes', 0),
+                            'comment_content': item.get('comment_content', ''),
+                            'note_likes': item.get('note_likes', 0),
                             'collects': item.get('collects', 0),
                             'comments': item.get('comments', 0),
                             'note_url': item.get('note_url', ''),
@@ -271,19 +288,39 @@ class DatabaseCookieManager:
                             'note_location': item.get('note_location', ''),
                             'note_type': item.get('note_type', ''),
                             'comment_location': item.get('comment_location', ''),
-                            'comment_id': item.get('comment_id', ''),
-                            'comment_author': item.get('commenter_nickname', '')
+                            'comment_id': comment_id,
+                            'comment_author': item.get('comment_author', ''),
+                            'note_content': item.get('note_content', ''),
+                            'comment_like_count': item.get('comment_like_count', 0)
                         }
                         
                         cursor.execute(insert_sql, data)
+                        new_comments_count += 1
+                        
+                        # 输出新评论提醒
+                        print(f"🔔 监控到新评论: {item.get('comment_author', '未知用户')} 在笔记 '{item.get('title', '未知标题')}' 下发表了评论")
+                        print(f"   评论内容: {item.get('comment_content', '')[:50]}{'...' if len(item.get('comment_content', '')) > 50 else ''}")
+                        print(f"   评论ID: {comment_id}")
+                        print("---")
                     
                     # 提交事务
                     connection.commit()
-                    print(f"成功保存 {len(merged_data)} 条数据到 monitor_comments 表")
+                    
+                    # 输出保存结果统计
+                    print(f"\n📊 数据保存统计:")
+                    print(f"   新增评论: {new_comments_count} 条")
+                    print(f"   跳过重复: {skipped_comments_count} 条")
+                    print(f"   总处理: {len(merged_data)} 条")
+                    
+                    if new_comments_count > 0:
+                        print(f"✅ 成功保存 {new_comments_count} 条新评论到 monitor_comments 表")
+                    else:
+                        print("ℹ️  没有发现新评论，所有评论均已存在于数据库中")
+                    
                     return True
                     
             except Exception as e:
-                print(f"保存数据到数据库时出错: {e}")
+                print(f"❌ 保存数据到数据库时出错: {e}")
                 if 'connection' in locals():
                     connection.rollback()
                 return False
@@ -291,6 +328,115 @@ class DatabaseCookieManager:
             finally:
                 if 'connection' in locals():
                     connection.close()
+
+    def get_monitor_urls(self, email: str) -> List[str]:
+        """从xhs_notes表中查询需要监控的URL列表
+        
+        Args:
+            email (str): 用户邮箱，用于匹配userInfo字段
+            
+        Returns:
+            List[str]: 需要监控的note_url列表
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+            
+        try:
+            with connection.cursor() as cursor:
+                # 查询is_monitor字段为1且userInfo匹配email的note_url
+                sql = """
+                SELECT note_url 
+                FROM xhs_notes 
+                WHERE is_monitor = 1 AND userInfo = %s
+                ORDER BY id ASC
+                """
+                cursor.execute(sql, (email,))
+                results = cursor.fetchall()
+                
+                # 提取note_url列表
+                monitor_urls = [row['note_url'] for row in results if row['note_url']]
+                print(f"为用户 {email} 从数据库获取到 {len(monitor_urls)} 个需要监控的URL")
+                return monitor_urls
+                
+        except Exception as e:
+            print(f"获取监控URL列表失败: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def get_note_comments_count(self, note_url: str) -> int:
+        """获取指定note_url的评论数量
+
+        Args:
+            note_url (str): 小红书笔记的URL
+
+        Returns:
+            int: 评论数量，如果查询失败则返回0
+        """
+        connection = self.get_connection()
+        if not connection:
+            return 0
+
+        try:
+            with connection.cursor() as cursor:
+                sql = """
+                SELECT comments
+                FROM xhs_notes
+                WHERE note_url = %s
+                """
+                cursor.execute(sql, (note_url,))
+                result = cursor.fetchone()
+                
+                return result['comments'] if result else 0
+        except Exception as e:
+            print(f"获取评论数量失败: {e}")
+            return 0
+        finally:
+            connection.close()
+
+    def update_note_comments_count(self, note_url: str, comment_count: int) -> bool:
+        """修改xhs_notes表中指定note_url的comments字段
+        
+        Args:
+            note_url (str): 小红书笔记的URL
+            comment_count (int): 新的评论数量
+            
+        Returns:
+            bool: 修改成功返回True，失败返回False
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+            
+        try:
+            with connection.cursor() as cursor:
+                # 更新指定note_url的comments字段
+                sql = """
+                        UPDATE xhs_notes 
+                        SET comments = %s 
+                        WHERE note_url LIKE %s
+                      """
+                cursor.execute(sql, (comment_count, note_url))
+                affected_rows = cursor.rowcount
+                connection.commit()
+                
+                if affected_rows > 0:
+                    print(f"✅ 成功更新笔记评论数量: {note_url}")
+                    print(f"   新评论数量: {comment_count}")
+                    print(f"   影响行数: {affected_rows}")
+                    return True
+                else:
+                    print(f"⚠️  未找到匹配的笔记URL: {note_url}")
+                    return False
+                    
+        except Exception as e:
+            print(f"❌ 更新评论数量失败: {e}")
+            if 'connection' in locals():
+                connection.rollback()
+            return False
+        finally:
+            connection.close()
 
     def test_connection(self) -> bool:
         """测试数据库连接"""

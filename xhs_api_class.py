@@ -86,7 +86,8 @@ class XhsAPI():
                 'nickname': comment.get('user_info', {}).get('nickname', ''),  # 昵称
                 'comment_id': comment.get('id', ''),  # 评论ID
                 'comment_location': comment.get('ip_location', ''),  # IP位置
-                'note_time': datetime.fromtimestamp(int(int(comment.get('create_time', ''))/1000)).strftime("%Y-%m-%d %H:%M:%S")  # 笔记创建时间
+                'note_time': datetime.fromtimestamp(int(int(comment.get('create_time', ''))/1000)).strftime("%Y-%m-%d %H:%M:%S"),  # 笔记创建时间
+                
             }
             comments_list.append(format_dict)
             print(format_dict)
@@ -104,7 +105,8 @@ class XhsAPI():
                     'nickname': sub_comment.get('user_info', {}).get('nickname', ''),  # 昵称
                     'comment_id': sub_comment.get('id', ''),  # 评论ID
                     'comment_location': sub_comment.get('ip_location', ''),  # IP位置
-                    'note_time': datetime.fromtimestamp(int(int(sub_comment.get('create_time', ''))/1000)).strftime("%Y-%m-%d %H:%M:%S")  # 笔记创建时间
+                    'note_time': datetime.fromtimestamp(int(int(sub_comment.get('create_time', ''))/1000)).strftime("%Y-%m-%d %H:%M:%S"),  # 笔记创建时间
+                    
                 }
                 comments_list.append(format_dict)
                 print(format_dict)
@@ -161,7 +163,8 @@ class XhsAPI():
                 'nickname': comment.get('user_info', {}).get('nickname', ''),  # 昵称
                 'comment_id': comment.get('id', ''),  # 评论ID,
                 'comment_location': comment.get('ip_location', ''),  # IP位置
-                'note_time': datetime.fromtimestamp(int(int(comment.get('create_time', ''))/1000)).strftime("%Y-%m-%d %H:%M:%S")  # 笔记创建时间
+                'note_time': datetime.fromtimestamp(int(int(comment.get('create_time', ''))/1000)).strftime("%Y-%m-%d %H:%M:%S"),  # 笔记创建时间
+                
             }
             
             comments_list.append(format_dict)
@@ -343,29 +346,27 @@ class XhsAPI():
                 'title': note_info.get('title', ''),
                 'note_author': note_info.get('author', ''),
                 'userInfo': userInfo,  # 客户标识
-                'content': comment.get('content', ''),
-                'likes': note_info.get('like_count', 0),
+                'note_likes': note_info.get('note_likes', 0),
                 'collects': note_info.get('collected_count', 0),
                 'comments': note_info.get('comment_count', 0),
                 'note_url': note_info.get('note_url', ''),
-                'collect_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # 收藏时间
+                'collect_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # 收集时间
                 'note_time': note_info.get('note_time', ''),  # 笔记创建时间
                 'note_location': note_info.get('location', ''),
                 'note_type': note_info.get('note_type', ''),
+                'note_content': note_info.get('note_content', '').replace('\n', ''),  # 笔记内容
                 
                 # 评论信息
                 'comment_location': comment.get('comment_location', ''),
                 'comment_id': comment.get('comment_id', ''),
-                'commenter_nickname': comment.get('nickname', ''),
-                
-                
-                
+                'comment_author': comment.get('nickname', ''),
+                'comment_like_count': comment.get('like_count', 0),  # 评论点赞数
+                'comment_content': comment.get('content', ''),  # 评论内容
             }
             merged_data.append(merged_item)
             
         return merged_data
- 
-    
+
     def get_note_info(self, cookies_str, url):
         """获取小红书笔记信息
         Args:
@@ -373,6 +374,7 @@ class XhsAPI():
             note_id (str): 笔记ID
             xsec_token (str): 安全令牌
         """
+        ori_url=url
         if "discovery" in  url:
             url=convert_discovery_to_explore_url(url)
         note_params = self.extract_url_params(url)
@@ -399,22 +401,23 @@ class XhsAPI():
                 'note_type': response.get('data', {}).get('items', {})[0].get('model_type', {}),#笔记类型
                 'note_id': response.get('data', {}).get('items', {})[0].get('note_card').get('note_id', ''),  # 笔记ID
                 'title': response.get('data', {}).get('items', {})[0].get('note_card').get('title', ''),  # 笔记标题
-                'like_count': response.get('data', {}).get('items', {})[0].get('note_card').get('interact_info').get('liked_count', 0),  # 点赞数
+                'note_likes': response.get('data', {}).get('items', {})[0].get('note_card').get('interact_info').get('liked_count', 0),  # 点赞数
                 'collected_count': response.get('data', {}).get('items', {})[0].get('note_card').get('interact_info').get('collected_count', 0),  # 收藏数
                 'comment_count': response.get('data', {}).get('items', {})[0].get('note_card').get('interact_info').get('comment_count', 0),  # 评论数
-                'note_url': url,  # 笔记URL
+                'note_url': ori_url,  # 笔记URL
                 'xsec_token': note_params['xsec_token'],  # 安全令牌
                 'location': response.get('data', {}).get('items', {})[0].get('note_card').get('ip_location', ''),  # 位置
                 'author': response.get('data', {}).get('items', {})[0].get('note_card', {}).get('user', '').get('nickname'),  # 作者昵称
+                'note_content': response.get('data', {}).get('items', {})[0].get('note_card').get('desc', '').replace('\n',''),  # 笔记内容
             }
-            print(f"获取笔记信息成功: {info_data}")
+            
             return info_data
         else:
             print(f"获取笔记信息失败: {response.get('message', '未知错误')}")
             return None
         print(response)
     
-    def monitor_comments(self, cookies_str, note_url,userInfo,keyword, interval=60):
+    def monitor_comments(self, cookies_str, note_url,userInfo,keyword,comment_cnt, interval=60):
         """监控笔记评论变化
         Args:
             cookies_str (str): Cookies字符串
@@ -425,20 +428,22 @@ class XhsAPI():
         """
         #笔记基本信息
         note_info=self.get_note_info(cookies_str,note_url)
-        # if note_info.get('comment_count', 0) != xxx: 如果笔记的评论数和上一次获取的评论数不同，才监控
-        
-          
+        if int(note_info.get('comment_count', 0)) != int(comment_cnt): #如果笔记的评论数和上一次获取的评论数不同，才监控
         #笔记的评论内容
-        comments_list = []
-        comments_list = self.get_comments(cookies_str, note_url, comments_list=comments_list)
-        print(f'一共收集到{len(comments_list)}条评论')
-        merge_info = self.merge_note_info_with_comments(note_info, comments_list,userInfo,keyword)
-        
-        print(merge_info)
-        if not comments_list:
-            print("没有获取到评论")
+            print(f"笔记评论数已变化，当前评论数: {note_info.get('comment_count', 0)}，上次获取的评论数: {comment_cnt},开始监控")
+            comments_list = []
+            comments_list = self.get_comments(cookies_str, note_url, comments_list=comments_list)
+            print(f'一共收集到{len(comments_list)}条评论')
+            merge_info = self.merge_note_info_with_comments(note_info, comments_list,userInfo,keyword)
+            
+            print(merge_info)
+            if not comments_list:
+                print("没有获取到评论")
+                return None
+            return merge_info
+        else:
+            print(f"笔记评论数未变化，当前评论数: {note_info.get('comment_count', 0)}，上次获取的评论数: {comment_cnt},不进行监控")
             return None
-        return merge_info
     
 # 使用示例
 if __name__ == "__main__":

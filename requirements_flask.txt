@@ -1,0 +1,16 @@
+# Flask API 相关依赖
+Flask==2.3.3
+requests==2.31.0
+flask_cors
+# 现有项目依赖（从原requirements.txt继承）
+pymysql==1.1.0
+python-dotenv==1.0.0
+loguru==0.7.2
+
+# 其他可能需要的依赖
+Werkzeug==2.3.7
+Jinja2==3.1.2
+click==8.1.7
+MarkupSafe==2.1.3
+itsdangerous==2.1.2
+blinker==1.6.3
