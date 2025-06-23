@@ -15,24 +15,14 @@ from xhs_utils.url_converter import convert_discovery_to_explore_url
 class XhsAPI():
     """小红书API类，封装了获取评论、搜索笔记等功能"""
     
-    def __init__(self, csv_filename='comment.csv'):
+    def __init__(self):
         """初始化XhsAPI类
         
         Args:
-            csv_filename (str): CSV文件名，默认为'comment.csv'
+            
         """
-        self.page = None
         self.note_list = []
         
-        # 初始化CSV文件
-        self.csv_file = open(csv_filename, mode='w', encoding='utf-8', newline='')
-        self.csv_writer = csv.DictWriter(
-            self.csv_file, 
-            fieldnames=['title', 'like_count', 'nickname']
-        )
-        self.csv_writer.writeheader()
-        
-    
     def extract_url_params(self, url):
         """从URL中提取参数
         
@@ -56,9 +46,8 @@ class XhsAPI():
             "xsec_source": query_params.get("xsec_source", [""])[0]
         }
         return params
-
-    
-    def get_comments(self, cookies_str, ori_url, cursor=''):
+  
+    def get_comments(self, cookies_str, ori_url, cursor='',comments_list: list = []):
         """获取小红书笔记下的评论
         
         Args:
@@ -85,8 +74,6 @@ class XhsAPI():
         headers, cookies, data = generate_request_params(cookies_str, uri, params)
         url = "https://edith.xiaohongshu.com/api/sns/web/v2/comment/page"
 
-        
-        
         response = requests.get(url, headers=headers, cookies=cookies, params=params).json()
         comments = response.get('data', {}).get('comments', [])
         
@@ -94,27 +81,34 @@ class XhsAPI():
         
         for comment in comments:
             format_dict = {
-                'title': comment.get('content', ''),  # 内容
+                'content': comment.get('content', ''),  # 内容
                 'like_count': comment.get('like_count', 0),  # 点赞数
-                'nickname': comment.get('user_info', {}).get('nickname', '')  # 昵称
+                'nickname': comment.get('user_info', {}).get('nickname', ''),  # 昵称
+                'comment_id': comment.get('id', ''),  # 评论ID
+                'comment_location': comment.get('ip_location', ''),  # IP位置
+                'note_time': datetime.fromtimestamp(int(int(comment.get('create_time', ''))/1000)).strftime("%Y-%m-%d %H:%M:%S")  # 笔记创建时间
             }
+            comments_list.append(format_dict)
             print(format_dict)
-            self.csv_writer.writerow(format_dict)
+            
             
             # if comment.get('pictures'):
             #     for image_list in comment.get('pictures'):
             #         image_url = image_list.get('url_default', '')  # 获取图片链接
             #         self.download_image_with_date(image_url, date_format="%Y%m%d_%H%M%S")
-            
+    
             for sub_comment in comment['sub_comments']:  # 一级评论会自带一个子评论
                 format_dict = {
-                    'title': sub_comment.get('content', ''),  # 内容
+                    'content': sub_comment.get('content', ''),  # 内容
                     'like_count': sub_comment.get('like_count', 0),  # 点赞数
-                    'nickname': sub_comment.get('user_info', {}).get('nickname', '')  # 昵称
+                    'nickname': sub_comment.get('user_info', {}).get('nickname', ''),  # 昵称
+                    'comment_id': sub_comment.get('id', ''),  # 评论ID
+                    'comment_location': sub_comment.get('ip_location', ''),  # IP位置
+                    'note_time': datetime.fromtimestamp(int(int(sub_comment.get('create_time', ''))/1000)).strftime("%Y-%m-%d %H:%M:%S")  # 笔记创建时间
                 }
+                comments_list.append(format_dict)
                 print(format_dict)
-                self.csv_writer.writerow(format_dict)
-            
+                
             if comment.get('sub_comment_has_more') == True:  # 自带的子评论是否还可展开
                 time.sleep(2)
                 self.get_sub_comments(
@@ -122,14 +116,16 @@ class XhsAPI():
                     comment.get('note_id', note_params['note_id']),
                     comment.get('id', ''),
                     comment.get('sub_comment_cursor', ''),
-                    note_params['xsec_token']
+                    note_params['xsec_token'],
+                    comments_list
                 )
         
         if response.get('data').get('has_more') == True:  # 是否有下一页
             new_cursor = response.get('data', {}).get('cursor', '')
-            self.get_comments(cookies_str,ori_url, new_cursor)
+            self.get_comments(cookies_str,ori_url, new_cursor,comments_list)
+        return comments_list   
             
-    def get_sub_comments(self, cookies_str, note_id, root_comment_id, cursor, xsec_token):
+    def get_sub_comments(self, cookies_str, note_id, root_comment_id, cursor, xsec_token,comments_list: list = []):
         """获取小红书笔记的二级评论
         
         Args:
@@ -160,11 +156,15 @@ class XhsAPI():
         comments = response.get('data', {}).get('comments', [])
         for comment in comments:
             format_dict = {
-                'title': comment.get('content', ''),  # 内容
+                'content': comment.get('content', ''),  # 内容
                 'like_count': comment.get('like_count', 0),  # 点赞数
-                'nickname': comment.get('user_info', {}).get('nickname', '')  # 昵称
+                'nickname': comment.get('user_info', {}).get('nickname', ''),  # 昵称
+                'comment_id': comment.get('id', ''),  # 评论ID,
+                'comment_location': comment.get('ip_location', ''),  # IP位置
+                'note_time': datetime.fromtimestamp(int(int(comment.get('create_time', ''))/1000)).strftime("%Y-%m-%d %H:%M:%S")  # 笔记创建时间
             }
-            self.csv_writer.writerow(format_dict)
+            
+            comments_list.append(format_dict)
             print(format_dict)
             
             if comment.get('pictures'):
@@ -177,7 +177,7 @@ class XhsAPI():
         # print(f'二级评论response{response}')
         if response and response.get('data').get('has_more') == True:
             new_sub_cursor = response.get('data', {}).get('cursor', '')
-            self.get_sub_comments(cookies_str,note_id, root_comment_id, new_sub_cursor, xsec_token)
+            self.get_sub_comments(cookies_str,note_id, root_comment_id, new_sub_cursor, xsec_token,comments_list)
     
     def download_image_with_date(self, url, save_dir="images", date_format="%Y%m%d_%H%M%S", 
                                 include_original_name=False, avoid_overwrite=True):
@@ -322,13 +322,124 @@ class XhsAPI():
         for url in self.note_list:
             self.get_comments(cookies_str,url)
 
+    def merge_note_info_with_comments(self, note_info, comments_list,userInfo,kerword):
+        """将笔记信息与评论列表合并
+        
+        Args:
+            note_info (dict): get_note_info函数返回的笔记信息字典
+            comments_list (list): get_comments函数返回的评论列表
+            userInfo (str): 客户标识
+            
+        Returns:
+            list: 合并后的数据列表，每个元素包含笔记信息和单条评论信息
+        """
+        merged_data = []
+        
+        for comment in comments_list:
+            # 创建合并后的数据字典
+            merged_item = {
+                # 笔记信息
+                'keyword':kerword,
+                'title': note_info.get('title', ''),
+                'note_author': note_info.get('author', ''),
+                'userInfo': userInfo,  # 客户标识
+                'content': comment.get('content', ''),
+                'likes': note_info.get('like_count', 0),
+                'collects': note_info.get('collected_count', 0),
+                'comments': note_info.get('comment_count', 0),
+                'note_url': note_info.get('note_url', ''),
+                'collect_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # 收藏时间
+                'note_time': note_info.get('note_time', ''),  # 笔记创建时间
+                'note_location': note_info.get('location', ''),
+                'note_type': note_info.get('note_type', ''),
+                
+                # 评论信息
+                'comment_location': comment.get('comment_location', ''),
+                'comment_id': comment.get('comment_id', ''),
+                'commenter_nickname': comment.get('nickname', ''),
+                
+                
+                
+            }
+            merged_data.append(merged_item)
+            
+        return merged_data
+ 
     
-    def close(self):
-        """关闭资源"""
-        if hasattr(self, 'csv_file') and self.csv_file:
-            self.csv_file.close()
-
-
+    def get_note_info(self, cookies_str, url):
+        """获取小红书笔记信息
+        Args:
+            cookies_str (str): Cookies字符串
+            note_id (str): 笔记ID
+            xsec_token (str): 安全令牌
+        """
+        if "discovery" in  url:
+            url=convert_discovery_to_explore_url(url)
+        note_params = self.extract_url_params(url)
+        uri = "/api/sns/web/v1/feed"
+        params = {
+            "source_note_id": note_params['note_id'],
+            "xsec_token": note_params['xsec_token'],
+            "xsec_source": note_params['xsec_source'],
+            "image_formats": [
+                "jpg",
+                "webp",
+                "avif"
+            ],
+            "extra": {
+                "need_body_topic": "1"
+            }
+        }
+        # splice_api = splice_str(uri, params)
+        headers, cookies, data = generate_request_params(cookies_str, uri, params)
+        response = requests.post("https://edith.xiaohongshu.com"+uri, headers=headers, cookies=cookies, data=data.encode('utf-8')).json()
+        
+        if response.get('code') == 0 :
+            info_data={
+                'note_type': response.get('data', {}).get('items', {})[0].get('model_type', {}),#笔记类型
+                'note_id': response.get('data', {}).get('items', {})[0].get('note_card').get('note_id', ''),  # 笔记ID
+                'title': response.get('data', {}).get('items', {})[0].get('note_card').get('title', ''),  # 笔记标题
+                'like_count': response.get('data', {}).get('items', {})[0].get('note_card').get('interact_info').get('liked_count', 0),  # 点赞数
+                'collected_count': response.get('data', {}).get('items', {})[0].get('note_card').get('interact_info').get('collected_count', 0),  # 收藏数
+                'comment_count': response.get('data', {}).get('items', {})[0].get('note_card').get('interact_info').get('comment_count', 0),  # 评论数
+                'note_url': url,  # 笔记URL
+                'xsec_token': note_params['xsec_token'],  # 安全令牌
+                'location': response.get('data', {}).get('items', {})[0].get('note_card').get('ip_location', ''),  # 位置
+                'author': response.get('data', {}).get('items', {})[0].get('note_card', {}).get('user', '').get('nickname'),  # 作者昵称
+            }
+            print(f"获取笔记信息成功: {info_data}")
+            return info_data
+        else:
+            print(f"获取笔记信息失败: {response.get('message', '未知错误')}")
+            return None
+        print(response)
+    
+    def monitor_comments(self, cookies_str, note_url,userInfo,keyword, interval=60):
+        """监控笔记评论变化
+        Args:
+            cookies_str (str): Cookies字符串
+            note_url (str): 笔记URL
+            userInfo (str): 客户标识
+            keyword (str): 关键词
+            interval (int): 检查间隔时间（秒）
+        """
+        #笔记基本信息
+        note_info=self.get_note_info(cookies_str,note_url)
+        # if note_info.get('comment_count', 0) != xxx: 如果笔记的评论数和上一次获取的评论数不同，才监控
+        
+          
+        #笔记的评论内容
+        comments_list = []
+        comments_list = self.get_comments(cookies_str, note_url, comments_list=comments_list)
+        print(f'一共收集到{len(comments_list)}条评论')
+        merge_info = self.merge_note_info_with_comments(note_info, comments_list,userInfo,keyword)
+        
+        print(merge_info)
+        if not comments_list:
+            print("没有获取到评论")
+            return None
+        return merge_info
+    
 # 使用示例
 if __name__ == "__main__":
     # 创建XhsAPI实例
