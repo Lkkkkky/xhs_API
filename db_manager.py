@@ -413,10 +413,10 @@ class DatabaseCookieManager:
             with connection.cursor() as cursor:
                 # 更新指定note_url的comments字段
                 sql = """
-                        UPDATE xhs_notes 
-                        SET comments = %s 
-                        WHERE note_url = %s
-                      """
+                    UPDATE xhs_notes 
+                    SET comments = %s 
+                    WHERE note_url = %s
+                    """
                 cursor.execute(sql, (comment_count, note_url))
                 affected_rows = cursor.rowcount
                 connection.commit()
