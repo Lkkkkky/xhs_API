@@ -4,7 +4,7 @@
 Flask API 服务器
 将monitor_task函数封装为REST API接口
 """
-
+import random
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
@@ -57,12 +57,10 @@ def monitor_task(email, keyword):
         )
         
         # 获取随机cookie
-        random_cookie = db_manager.get_random_cookie()
-        if not random_cookie:
+        cookie_list = db_manager.get_all_cookies()
+        if not cookie_list:
             raise ValueError("无法获取有效的cookie")
         
-        cookies_str = random_cookie
-        logger.info(f'使用Cookies: {cookies_str[:50]}...')
         
         # 初始化小红书API
         xhs = XhsAPI()
@@ -77,12 +75,21 @@ def monitor_task(email, keyword):
             cnt = db_manager.get_note_comments_count(url)
             logger.info(f'开始监控链接: {url}, 当前评论数量: {cnt}')
             
-            data = xhs.monitor_comments(cookies_str, url, email, keyword, cnt)
-            
-            db_manager.update_note_comments_count(url, data[0]['comments'])
-            print(url)
-            # 保存监控数据
-            db_manager.save_to_monitor_comments(data)
+            data = xhs.monitor_comments(cookie_list, url, email, keyword, cnt)
+            if data is not None:
+                merge_info, dead_cookies_list = data
+                print(f"获取到合并信息: {len(merge_info)} 条")
+                print(f"失效cookies: {len(dead_cookies_list)} 个")
+                for ck in dead_cookies_list:
+                    db_manager.mark_cookie_status(0, ck)
+                # 处理merge_info和dead_cookies_list
+            else:
+                print("监控结果为空，评论数未变化")
+            if data is not None:
+                db_manager.update_note_comments_count(url, data[0]['comments'])
+                print(url)
+                # 保存监控数据
+                db_manager.save_to_monitor_comments(data)
             
         return {
             'success': True,

@@ -69,7 +69,7 @@ class DatabaseCookieManager:
                 cursor.execute(sql)
                 cookies = cursor.fetchall()
                 print(f"从数据库获取到 {len(cookies)} 个可用cookies")
-                return cookies
+                return [cookie['cookie_string'] for cookie in cookies]
         except Exception as e:
             print.error(f"获取cookies失败: {e}")
             return []
@@ -413,10 +413,10 @@ class DatabaseCookieManager:
             with connection.cursor() as cursor:
                 # 更新指定note_url的comments字段
                 sql = """
-                    UPDATE xhs_notes 
-                    SET comments = %s 
-                    WHERE note_url = %s
-                    """
+                UPDATE xhs_notes 
+                SET comments = %s 
+                WHERE note_url = %s
+                """
                 cursor.execute(sql, (comment_count, note_url))
                 affected_rows = cursor.rowcount
                 connection.commit()

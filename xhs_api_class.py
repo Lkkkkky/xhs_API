@@ -78,55 +78,59 @@ class XhsAPI():
         comments = response.get('data', {}).get('comments', [])
         
         print(f"成功获取{len(comments)}条评论")
-        
-        for comment in comments:
-            format_dict = {
-                'content': comment.get('content', ''),  # 内容
-                'like_count': comment.get('like_count', 0),  # 点赞数
-                'nickname': comment.get('user_info', {}).get('nickname', ''),  # 昵称
-                'comment_id': comment.get('id', ''),  # 评论ID
-                'comment_location': comment.get('ip_location', ''),  # IP位置
-                'note_time': datetime.fromtimestamp(int(int(comment.get('create_time', ''))/1000)).strftime("%Y-%m-%d %H:%M:%S"),  # 笔记创建时间
-                
-            }
-            comments_list.append(format_dict)
-            print(format_dict)
-            
-            
-            # if comment.get('pictures'):
-            #     for image_list in comment.get('pictures'):
-            #         image_url = image_list.get('url_default', '')  # 获取图片链接
-            #         self.download_image_with_date(image_url, date_format="%Y%m%d_%H%M%S")
-    
-            for sub_comment in comment['sub_comments']:  # 一级评论会自带一个子评论
+        if response.get('code') == 0 :
+            for comment in comments:
                 format_dict = {
-                    'content': sub_comment.get('content', ''),  # 内容
-                    'like_count': sub_comment.get('like_count', 0),  # 点赞数
-                    'nickname': sub_comment.get('user_info', {}).get('nickname', ''),  # 昵称
-                    'comment_id': sub_comment.get('id', ''),  # 评论ID
-                    'comment_location': sub_comment.get('ip_location', ''),  # IP位置
-                    'note_time': datetime.fromtimestamp(int(int(sub_comment.get('create_time', ''))/1000)).strftime("%Y-%m-%d %H:%M:%S"),  # 笔记创建时间
+                    'content': comment.get('content', ''),  # 内容
+                    'like_count': comment.get('like_count', 0),  # 点赞数
+                    'nickname': comment.get('user_info', {}).get('nickname', ''),  # 昵称
+                    'comment_id': comment.get('id', ''),  # 评论ID
+                    'comment_location': comment.get('ip_location', ''),  # IP位置
+                    'note_time': datetime.fromtimestamp(int(int(comment.get('create_time', ''))/1000)).strftime("%Y-%m-%d %H:%M:%S"),  # 笔记创建时间
                     
                 }
                 comments_list.append(format_dict)
                 print(format_dict)
                 
-            if comment.get('sub_comment_has_more') == True:  # 自带的子评论是否还可展开
-                time.sleep(2)
-                self.get_sub_comments(
-                    cookies_str,
-                    comment.get('note_id', note_params['note_id']),
-                    comment.get('id', ''),
-                    comment.get('sub_comment_cursor', ''),
-                    note_params['xsec_token'],
-                    comments_list
-                )
+                
+                # if comment.get('pictures'):
+                #     for image_list in comment.get('pictures'):
+                #         image_url = image_list.get('url_default', '')  # 获取图片链接
+                #         self.download_image_with_date(image_url, date_format="%Y%m%d_%H%M%S")
         
-        if response.get('data').get('has_more') == True:  # 是否有下一页
-            new_cursor = response.get('data', {}).get('cursor', '')
-            self.get_comments(cookies_str,ori_url, new_cursor,comments_list)
-        return comments_list   
+                for sub_comment in comment['sub_comments']:  # 一级评论会自带一个子评论
+                    format_dict = {
+                        'content': sub_comment.get('content', ''),  # 内容
+                        'like_count': sub_comment.get('like_count', 0),  # 点赞数
+                        'nickname': sub_comment.get('user_info', {}).get('nickname', ''),  # 昵称
+                        'comment_id': sub_comment.get('id', ''),  # 评论ID
+                        'comment_location': sub_comment.get('ip_location', ''),  # IP位置
+                        'note_time': datetime.fromtimestamp(int(int(sub_comment.get('create_time', ''))/1000)).strftime("%Y-%m-%d %H:%M:%S"),  # 笔记创建时间
+                        
+                    }
+                    comments_list.append(format_dict)
+                    print(format_dict)
+                    
+                if comment.get('sub_comment_has_more') == True:  # 自带的子评论是否还可展开
+                    time.sleep(2)
+                    self.get_sub_comments(
+                        cookies_str,
+                        comment.get('note_id', note_params['note_id']),
+                        comment.get('id', ''),
+                        comment.get('sub_comment_cursor', ''),
+                        note_params['xsec_token'],
+                        comments_list
+                    )
             
+            if response.get('data').get('has_more') == True:  # 是否有下一页
+                new_cursor = response.get('data', {}).get('cursor', '')
+                self.get_comments(cookies_str,ori_url, new_cursor,comments_list)
+            return comments_list   
+        else:
+            print(f"获取评论失败，错误代码: {response.get('code')}, 错误信息: {response.get('message')}")
+            print('尝试更换cookies')
+            # 这里可以添加更换cookies的逻辑
+            return False
     def get_sub_comments(self, cookies_str, note_id, root_comment_id, cursor, xsec_token,comments_list: list = []):
         """获取小红书笔记的二级评论
         
@@ -414,20 +418,30 @@ class XhsAPI():
             return info_data
         else:
             print(f"获取笔记信息失败: {response.get('message', '未知错误')}")
-            return None
+            return False
         print(response)
     
-    def monitor_comments(self, cookies_str, note_url,userInfo,keyword,comment_cnt, interval=60):
+    def monitor_comments(self, cookies_list, note_url,userInfo,keyword,comment_cnt, interval=60):
         """监控笔记评论变化
         Args:
-            cookies_str (str): Cookies字符串
+            cookies_list (List): Cookies列表
             note_url (str): 笔记URL
             userInfo (str): 客户标识
             keyword (str): 关键词
             interval (int): 检查间隔时间（秒）
         """
         #笔记基本信息
+        cookies_str = random.choice(cookies_list)  # 随机选择一个cookie
+        dead_cookies_list = []
+        print(f'使用的Cookies: {cookies_str}')
+        # 获取笔记信息
         note_info=self.get_note_info(cookies_str,note_url)
+        if not note_info:
+            #笔记失效则重新获取cookies并将该cookie从cookie_list中删除
+            cookies_list.remove(cookies_str)
+            dead_cookies_list.append(cookies_str)
+            print(f"获取笔记信息失败，当前cookie已失效: {cookies_str}")
+            cookies_str = random.choice(self.get_all_cookies())  # 随机更换一个cookie
         if int(note_info.get('comment_count', 0)) != int(comment_cnt): #如果笔记的评论数和上一次获取的评论数不同，才监控
         #笔记的评论内容
             print(f"笔记评论数已变化，当前评论数: {note_info.get('comment_count', 0)}，上次获取的评论数: {comment_cnt},开始监控")
@@ -438,9 +452,12 @@ class XhsAPI():
             
             print(merge_info)
             if not comments_list:
-                print("没有获取到评论")
-                return None
-            return merge_info
+                #更换cookies
+                cookies_list.remove(cookies_str)
+                dead_cookies_list.append(cookies_str)
+                print(f"获取笔记信息失败，当前cookie已失效: {cookies_str}")
+                cookies_str = random.choice(self.get_all_cookies())  # 随机更换一个cookie
+            return merge_info,dead_cookies_list
         else:
             print(f"笔记评论数未变化，当前评论数: {note_info.get('comment_count', 0)}，上次获取的评论数: {comment_cnt},不进行监控")
             return None
