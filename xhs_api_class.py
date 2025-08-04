@@ -440,6 +440,33 @@ class XhsAPI():
             return None
         return merge_info
     
+    def reply_comment(self,cookies_str, note_url, comment_id, content):
+        """回复评论
+        
+        Args:
+            cookies_str (str): Cookies字符串
+            note_url (str): 笔记URL
+            comment_id (str): 评论ID
+            content (str): 回复内容
+        """
+        note_params = self.extract_url_params(note_url)
+        uri = "/api/sns/web/v1/comment/post"
+        params = {
+            "note_id": note_params['note_id'],
+            "target_comment_id": comment_id,
+            "content": content,
+            "at_users": []
+        }
+        
+        headers, cookies, data = generate_request_params(cookies_str, uri, params)
+        url = "https://edith.xiaohongshu.com/api/sns/web/v1/comment/post"
+        
+        response = requests.post(url, headers=headers, cookies=cookies, data=data.encode('utf-8')).json()
+        print(f"回复评论请求: {response}")
+        if response.get('code') == 0:
+            print("回复成功")
+        else:
+            print(f"回复失败: {response.get('message', '未知错误')}")
 # 使用示例
 if __name__ == "__main__":
     # 创建XhsAPI实例

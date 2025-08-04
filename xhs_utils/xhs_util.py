@@ -89,6 +89,7 @@ def generate_headers(a1, api, data=''):
 
 def generate_request_params(cookies_str, api, data=''):
     cookies = trans_cookies(cookies_str)
+    print(f'Cookies: {cookies}')
     a1 = cookies['a1']
     headers, data = generate_headers(a1, api, data)
     return headers, cookies, data
