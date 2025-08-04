@@ -47,7 +47,7 @@ class XhsAPI():
         }
         return params
   
-    def get_comments(self, cookies_str, ori_url, cursor='',comments_list: list = []):
+    def get_comments(self, cookies_str, ori_url, cursor='',comments_list: list = [], max_comments=None):
         """获取小红书笔记下的评论
         
         Args:
@@ -74,12 +74,23 @@ class XhsAPI():
         headers, cookies, data = generate_request_params(cookies_str, uri, params)
         url = "https://edith.xiaohongshu.com/api/sns/web/v2/comment/page"
 
-        response = requests.get(url, headers=headers, cookies=cookies, params=params).json()
-        comments = response.get('data', {}).get('comments', [])
+        try:
+            response = requests.get(url, headers=headers, cookies=cookies, params=params).json()
+            if not response or not isinstance(response, dict) or 'data' not in response:
+                print("API响应数据异常，返回当前评论列表")
+                return comments_list
+            comments = response.get('data', {}).get('comments', [])
+        except Exception as e:
+            print(f"获取评论时发生异常: {e}，返回当前评论列表")
+            return comments_list
         
         print(f"成功获取{len(comments)}条评论")
         
         for comment in comments:
+            # 检查是否已达到最大评论数量
+            if max_comments and len(comments_list) >= max_comments:
+                return comments_list
+                
             format_dict = {
                 'content': comment.get('content', ''),  # 内容
                 'like_count': comment.get('like_count', 0),  # 点赞数
@@ -89,8 +100,10 @@ class XhsAPI():
                 'note_time': datetime.fromtimestamp(int(int(comment.get('create_time', ''))/1000)).strftime("%Y-%m-%d %H:%M:%S")  # 笔记创建时间
             }
             comments_list.append(format_dict)
-            print(format_dict)
-            
+            print(comments_list)  # 打印评论list
+            # 检查是否已达到最大评论数量
+            if max_comments and len(comments_list) >= max_comments:
+                return comments_list 
             
             # if comment.get('pictures'):
             #     for image_list in comment.get('pictures'):
@@ -98,6 +111,10 @@ class XhsAPI():
             #         self.download_image_with_date(image_url, date_format="%Y%m%d_%H%M%S")
     
             for sub_comment in comment['sub_comments']:  # 一级评论会自带一个子评论
+                # 检查是否已达到最大评论数量
+                if max_comments and len(comments_list) >= max_comments:
+                    return comments_list 
+                    
                 format_dict = {
                     'content': sub_comment.get('content', ''),  # 内容
                     'like_count': sub_comment.get('like_count', 0),  # 点赞数
@@ -107,9 +124,13 @@ class XhsAPI():
                     'note_time': datetime.fromtimestamp(int(int(sub_comment.get('create_time', ''))/1000)).strftime("%Y-%m-%d %H:%M:%S")  # 笔记创建时间
                 }
                 comments_list.append(format_dict)
-                print(format_dict)
+                print(comments_list)  # 打印评论list
                 
             if comment.get('sub_comment_has_more') == True:  # 自带的子评论是否还可展开
+                # 检查是否已达到最大评论数量
+                if max_comments and len(comments_list) >= max_comments:
+                    return comments_list
+                    
                 time.sleep(2)
                 self.get_sub_comments(
                     cookies_str,
@@ -117,15 +138,20 @@ class XhsAPI():
                     comment.get('id', ''),
                     comment.get('sub_comment_cursor', ''),
                     note_params['xsec_token'],
-                    comments_list
+                    comments_list,
+                    max_comments
                 )
         
         if response.get('data').get('has_more') == True:  # 是否有下一页
+            # 检查是否已达到最大评论数量
+            if max_comments and len(comments_list) >= max_comments:
+                return comments_list
+                
             new_cursor = response.get('data', {}).get('cursor', '')
-            self.get_comments(cookies_str,ori_url, new_cursor,comments_list)
-        return comments_list   
+            self.get_comments(cookies_str,ori_url, new_cursor,comments_list, max_comments)
+        return comments_list
             
-    def get_sub_comments(self, cookies_str, note_id, root_comment_id, cursor, xsec_token,comments_list: list = []):
+    def get_sub_comments(self, cookies_str, note_id, root_comment_id, cursor, xsec_token,comments_list: list = [], max_comments=None):
         """获取小红书笔记的二级评论
         
         Args:
@@ -150,11 +176,21 @@ class XhsAPI():
         # url = "https://edith.xiaohongshu.com/api/sns/web/v2/comment/sub/page"
         
         
-        response = requests.get("https://edith.xiaohongshu.com"+splice_api, headers=headers, cookies=cookies).json()
-        print(f"获取二级评论成功，共{len(response.get('data', {}).get('comments', []))}条")
-        
-        comments = response.get('data', {}).get('comments', [])
+        try:
+            response = requests.get("https://edith.xiaohongshu.com"+splice_api, headers=headers, cookies=cookies).json()
+            if not response or not isinstance(response, dict) or 'data' not in response:
+                print("二级评论API响应数据异常，返回当前评论列表")
+                return comments_list
+            print(f"获取二级评论成功，共{len(response.get('data', {}).get('comments', []))}条")
+            comments = response.get('data', {}).get('comments', [])
+        except Exception as e:
+            print(f"获取二级评论时发生异常: {e}，返回当前评论列表")
+            return comments_list
         for comment in comments:
+            # 检查是否已达到最大评论数量
+            if max_comments and len(comments_list) >= max_comments:
+                return 
+                
             format_dict = {
                 'content': comment.get('content', ''),  # 内容
                 'like_count': comment.get('like_count', 0),  # 点赞数
@@ -170,14 +206,20 @@ class XhsAPI():
             if comment.get('pictures'):
                 for image_list in comment.get('pictures'):
                     image_url = image_list.get('url_default', '')  # 获取图片链接
-                    self.download_image_with_date(image_url, date_format="%Y%m%d_%H%M%S")
+                    #图片下载
+                    # self.download_image_with_date(image_url, date_format="%Y%m%d_%H%M%S")
         
         time.sleep(2)
         # 如果还有更多评论，继续获取
         # print(f'二级评论response{response}')
         if response and response.get('data').get('has_more') == True:
+            # 检查是否已达到最大评论数量
+            if max_comments and len(comments_list) >= max_comments:
+                return comments_list
+                
             new_sub_cursor = response.get('data', {}).get('cursor', '')
-            self.get_sub_comments(cookies_str,note_id, root_comment_id, new_sub_cursor, xsec_token,comments_list)
+            self.get_sub_comments(cookies_str,note_id, root_comment_id, new_sub_cursor, xsec_token,comments_list, max_comments)
+        return comments_list
     
     def download_image_with_date(self, url, save_dir="images", date_format="%Y%m%d_%H%M%S", 
                                 include_original_name=False, avoid_overwrite=True):
@@ -235,8 +277,8 @@ class XhsAPI():
         except Exception as e:
             print(f"错误: {str(e)}")
             return False
-    
-    def search_comment_by_keyword(self, cookies_str,keyword, num):
+
+    def search_notes_by_keyword(self, cookies_str, keyword, num):
         """根据关键词搜索的笔记下面的评论
         
         Args:
@@ -300,7 +342,19 @@ class XhsAPI():
             # 暂时使用硬编码的cookies字符串
             headers, cookies, data = generate_request_params(cookies_str, uri, params)
             url = "https://edith.xiaohongshu.com/api/sns/web/v1/search/notes"
-            response = requests.post(url, headers=headers, cookies=cookies, data=data.encode('utf-8')).json()
+            try:
+                response_obj = requests.post(url, headers=headers, cookies=cookies, data=data.encode('utf-8'))
+                response = response_obj.json()
+                print(f"API响应状态码: {response_obj.status_code}")
+                print(f"API响应内容: {response}")
+            except Exception as e:
+                print(f"API请求失败: {e}")
+                continue
+                
+            if not response or not isinstance(response, dict):
+                print("API响应为空或格式错误")
+                continue
+                
             for item in response.get('data', {}).get('items', []):
                 note_id = item.get('id')
                 xsec_token = item.get('xsec_token')
@@ -312,15 +366,106 @@ class XhsAPI():
                         'url': f'https://www.xiaohongshu.com/explore/{note_id}?xsec_token={xsec_token}&xsec_source=pc_feed'
                     }
                     print(format_dict)
-                    self.note_list.append(format_dict['url'])
+                    self.note_list.append({'title': format_dict['title'], 'url': format_dict['url']})
                     if len(self.note_list) >= num:
-                        self.get_comments_by_search(cookies_str)
-                        return
+                        return self.note_list
 
-    def get_comments_by_search(self,cookies_str):
-        """根据搜索结果获取评论"""
-        for url in self.note_list:
-            self.get_comments(cookies_str,url)
+    def search_comments_by_keyword(self, cookies_str, keyword, num, comments_list: list = []):
+        """根据关键词搜索的笔记下面的评论
+        
+        Args:
+            keyword (str): 搜索关键词
+            num (int): 搜索的评论数量
+        """
+        
+        for p in range(1000):
+            uri = "/api/sns/web/v1/search/notes"
+            params = {
+                "keyword": keyword,
+                "page": 1,
+                "page_size": 20,
+                "search_id": generate_x_b3_traceid(21),
+                "sort": "general",
+                "note_type": 0,
+                "ext_flags": [],
+                "filters": [
+                    {
+                        "tags": [
+                            "general"
+                        ],
+                        "type": "sort_type"
+                    },
+                    {
+                        "tags": [
+                            "不限"
+                        ],
+                        "type": "filter_note_type"
+                    },
+                    {
+                        "tags": [
+                            "不限"
+                        ],
+                        "type": "filter_note_time"
+                    },
+                    {
+                        "tags": [
+                            "不限"
+                        ],
+                        "type": "filter_note_range"
+                    },
+                    {
+                        "tags": [
+                            "不限"
+                        ],
+                        "type": "filter_pos_distance"
+                    }
+                ],
+                "geo": "",
+                "image_formats": [
+                    "jpg",
+                    "webp",
+                    "avif"
+                ]
+            }
+            
+            final_uri = f"{uri}?{params}"
+            print(final_uri)
+            
+            # 这里需要实现具体的搜索逻辑
+            # 暂时使用硬编码的cookies字符串
+            headers, cookies, data = generate_request_params(cookies_str, uri, params)
+            url = "https://edith.xiaohongshu.com/api/sns/web/v1/search/notes"
+            try:
+                response = requests.post(url, headers=headers, cookies=cookies, data=data.encode('utf-8')).json()
+                if not response or not isinstance(response, dict) or 'data' not in response:
+                    print("搜索笔记API响应数据异常，返回当前评论列表")
+                    return comments_list
+            except Exception as e:
+                print(f"搜索笔记时发生异常: {e}，返回当前评论列表")
+                return comments_list
+            for item in response.get('data', {}).get('items', []):
+                note_id = item.get('id')
+                xsec_token = item.get('xsec_token')
+                if item.get('note_card'):
+                    format_dict = {
+                        'title': item.get('note_card').get('display_title'),
+                        'note_id': note_id,
+                        'xsec_token': xsec_token,
+                        'url': f'https://www.xiaohongshu.com/explore/{note_id}?xsec_token={xsec_token}&xsec_source=pc_feed'
+                    }
+                    print(format_dict)
+                    
+                    # 每爬一篇笔记，就立即爬取该笔记下的评论
+                    # 计算还需要多少条评论
+                    # remaining_comments = num - len(comments_list)
+                    self.get_comments(cookies_str, format_dict['url'], '', comments_list, max_comments=num)
+                    
+                    # 如果评论列表长度超过num，就返回评论列表
+                    if len(comments_list) >= num:
+                        return comments_list
+        
+        # 如果循环结束仍未收集到足够的评论，返回已收集到的评论
+        return comments_list
 
     def merge_note_info_with_comments(self, note_info, comments_list,userInfo,kerword):
         """将笔记信息与评论列表合并
